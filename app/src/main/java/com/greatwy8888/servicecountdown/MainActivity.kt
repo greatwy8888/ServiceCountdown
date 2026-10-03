@@ -25,7 +25,7 @@ class MainActivity : android.app.Activity() {
     private val tick = object: Runnable { override fun run(){ updateAll(); handler.postDelayed(this,1000) } }
     data class CardViews(val days:TextView,val hours:TextView,val mins:TextView,val secs:TextView,val status:TextView,val year:EditText?)
 
-    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContentView(R.layout.activity_main); buildCards(); updateAll() }
+    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); initializePhpDefaults(); setContentView(R.layout.activity_main); buildCards(); updateAll() }\n\n    private fun initializePhpDefaults() {\n        if (!prefs.contains("dpdns_end")) {\n            prefs.edit().putLong("dpdns_end", utcJuly28(2026)).putInt("dpdns_year", 2026).apply()\n        }\n    }
     override fun onResume(){ super.onResume(); updateAll(); handler.removeCallbacks(tick); handler.post(tick) }
     override fun onPause(){ super.onPause(); handler.removeCallbacks(tick) }
 
