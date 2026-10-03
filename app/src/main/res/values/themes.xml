@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.ServiceCountdown" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item><item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">@color/warm_bg</item><item name="android:navigationBarColor">@color/warm_bg</item>
+        <item name="android:colorAccent">@color/warm_primary</item>
+    </style>
+</resources>
