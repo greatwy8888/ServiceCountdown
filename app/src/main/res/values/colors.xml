@@ -1,0 +1,4 @@
+<resources>
+    <color name="warm_bg">#FFF7EF</color><color name="warm_card">#FFFFFF</color><color name="warm_primary">#E87924</color>
+    <color name="warm_dark">#4A2B20</color><color name="warm_muted">#8C6A5B</color><color name="warm_line">#F0D9CB</color><color name="white">#FFFFFF</color>
+</resources>
