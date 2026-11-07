@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/warm_bg" android:fillViewport="true">
 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
-<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="服务倒计时器" android:textColor="@color/warm_dark" android:textSize="27sp" android:textStyle="bold"/>
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+<TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="服务倒计时器" android:textColor="@color/warm_dark" android:textSize="27sp" android:textStyle="bold"/>
+<Button android:id="@+id/settingsButton" android:layout_width="wrap_content" android:layout_height="44dp" android:background="@drawable/bg_button" android:text="设置" android:textColor="#FFFFFF" android:textSize="14sp" android:textAllCaps="false"/>
+</LinearLayout>
 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="离线计时 · 退出、锁屏、重启后继续" android:textColor="@color/warm_muted" android:textSize="14sp"/>
 <LinearLayout android:id="@+id/container" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="14dp"/>
 </LinearLayout></ScrollView>
