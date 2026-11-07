@@ -438,7 +438,7 @@ class MainActivity : Activity() {
         try {
             val tree = Uri.parse(raw)
             val name = timestampName()
-            val fileUri = DocumentsContract.createDocument(contentResolver, tree, "application/json", name)
+            val fileUri = DocumentsContract.createDocument(contentResolver, DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree)), "application/json", name)
                 ?: throw IllegalStateException("无法在备份目录创建文件")
             contentResolver.openOutputStream(fileUri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use { it.write(backupJson()) }
                 ?: throw IllegalStateException("无法写入备份文件")
