@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.DatePickerDialog
 import android.app.AlertDialog
 import android.content.Intent
+import android.provider.DocumentsContract
+import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -36,6 +38,8 @@ class MainActivity : Activity() {
     private val cards = mutableMapOf<String, CardViews>()
     private var pendingDateField: EditText? = null
     private var pendingDateDialog: AlertDialog? = null
+    private val backupPrefs by lazy { getSharedPreferences("countdown_backup", MODE_PRIVATE) }
+    private val backupDir by lazy { java.io.File(filesDir, "backups").apply { if (!exists()) mkdirs() } }
 
     data class CardViews(
         val days: TextView, val hours: TextView, val mins: TextView,
@@ -211,12 +215,13 @@ class MainActivity : Activity() {
     }
 
     private fun showSettings() {
-        val options = arrayOf("添加服务", "导入", "导出")
+        val options = arrayOf("添加服务", "导入", "导出备份", "恢复本地备份")
         AlertDialog.Builder(this).setTitle("设置").setItems(options) { _, which ->
             when (which) {
                 0 -> showServiceEditor(null)
                 1 -> { val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { type = "application/json"; addCategory(Intent.CATEGORY_OPENABLE) }; startActivityForResult(i, 2001) }
-                2 -> { val i = Intent(Intent.ACTION_CREATE_DOCUMENT).apply { type = "application/json"; addCategory(Intent.CATEGORY_OPENABLE); putExtra(Intent.EXTRA_TITLE, "ServiceCountdown.json") }; startActivityForResult(i, 2002) }
+                2 -> exportBackup()
+                3 -> restoreLocalBackup()
             }
         }.show()
     }
@@ -250,6 +255,7 @@ class MainActivity : Activity() {
                     Toast.makeText(this, "请填写有效的服务器名、天数和小时数", Toast.LENGTH_LONG).show()
                     return@setPositiveButton
                 }
+                createSafetyBackup()
                 if (existing == null) {
                     val id = "custom_" + System.currentTimeMillis().toString()
                     val c = Counter(id, n, d, h, "", deadline.isChecked)
@@ -307,6 +313,7 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this).setTitle("删除倒计时")
             .setMessage("确定删除“${c.name}”及其倒计时吗？")
             .setNegativeButton("取消", null).setPositiveButton("删除") { _, _ ->
+                createSafetyBackup()
                 counters.removeAll { it.id == c.id }
                 prefs.edit().remove(c.id + "_end").remove(c.id + "_date").apply()
                 saveCounterDefinitions(); buildCards(); updateAll()
@@ -314,6 +321,7 @@ class MainActivity : Activity() {
     }
 
     private fun start(c: Counter) {
+        createSafetyBackup()
         val now = System.currentTimeMillis()
         val key = c.id + "_end"
         if (c.deadlineMode) {
@@ -330,6 +338,7 @@ class MainActivity : Activity() {
     }
 
     private fun reset(c: Counter) {
+        createSafetyBackup()
         if (c.deadlineMode) {
             val field = cards[c.id]?.date
             if (field != null) showDatePicker(c, field) else chooseDateForNewService(c)
@@ -378,13 +387,17 @@ class MainActivity : Activity() {
         val uri = data.data!!
         try {
             if (requestCode == 2001) importData(uri)
-            if (requestCode == 2002) exportData(uri)
+            if (requestCode == 2003) {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                backupPrefs.edit().putString("folder_uri", uri.toString()).apply()
+                saveExternalBackup(showToast = true)
+            }
         } catch (e: Exception) {
             Toast.makeText(this, "操作失败：${e.message ?: "文件格式错误"}", Toast.LENGTH_LONG).show()
         }
     }
 
-    private fun exportData(uri: Uri) {
+    private fun backupJson(): String {
         val root = JSONObject()
         val arr = JSONArray()
         counters.forEach { c ->
@@ -393,21 +406,120 @@ class MainActivity : Activity() {
                 .put("end", prefs.getLong(c.id + "_end", 0L))
                 .put("date", prefs.getString(c.id + "_date", "") ?: ""))
         }
-        root.put("version", 2).put("services", arr)
-        contentResolver.openOutputStream(uri)?.bufferedWriter(Charsets.UTF_8)?.use { it.write(root.toString(2)) }
-        Toast.makeText(this, "导出成功", Toast.LENGTH_SHORT).show()
+        root.put("version", 2).put("createdAt", System.currentTimeMillis()).put("services", arr)
+        return root.toString(2)
+    }
+
+    private fun timestampName(): String {
+        val base = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())
+        var name = "$" + "{base}.json"
+        var suffix = 1
+        while (java.io.File(backupDir, name).exists()) {
+            name = "$" + "{base}_%02d.json".format(suffix)
+            suffix++
+        }
+        return name
+    }
+
+    private fun exportBackup() {
+        val folder = backupPrefs.getString("folder_uri", null)
+        if (folder.isNullOrBlank()) {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            startActivityForResult(intent, 2003)
+        } else {
+            saveExternalBackup(showToast = true)
+        }
+    }
+
+    private fun saveExternalBackup(showToast: Boolean = false) {
+        val raw = backupPrefs.getString("folder_uri", null)
+        if (raw.isNullOrBlank()) return
+        try {
+            val tree = Uri.parse(raw)
+            val name = timestampName()
+            val fileUri = DocumentsContract.createDocument(contentResolver, tree, "application/json", name)
+                ?: throw IllegalStateException("无法在备份目录创建文件")
+            contentResolver.openOutputStream(fileUri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use { it.write(backupJson()) }
+                ?: throw IllegalStateException("无法写入备份文件")
+            pruneExternalBackups(tree)
+            if (showToast) Toast.makeText(this, "备份成功：$" + "{name}（仅保留最新5个）", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            if (showToast) Toast.makeText(this, "外部备份失败：$" + "{e.message ?: "请检查备份目录权限"}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun pruneExternalBackups(tree: Uri) {
+        val treeId = DocumentsContract.getTreeDocumentId(tree)
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, treeId)
+        val rows = mutableListOf<Pair<String, Uri>>()
+        var cursor: Cursor? = null
+        try {
+            cursor = contentResolver.query(children,
+                arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                null, null, null)
+            while (cursor?.moveToNext() == true) {
+                val id = cursor.getString(0)
+                val name = cursor.getString(1) ?: continue
+                if (name.matches(Regex("^[0-9]{8}_[0-9]{4}(_[0-9]{2,})?\\.json$"))) {
+                    rows.add(name to DocumentsContract.buildDocumentUriUsingTree(tree, id))
+                }
+            }
+        } finally { cursor?.close() }
+        rows.sortedByDescending { it.first }.drop(5).forEach { (_, uri) ->
+            try { DocumentsContract.deleteDocument(contentResolver, uri) } catch (_: Exception) { }
+        }
+    }
+
+    private fun createSafetyBackup() {
+        try {
+            val file = java.io.File(backupDir, timestampName())
+            file.writeText(backupJson(), Charsets.UTF_8)
+            backupDir.listFiles()?.filter { it.isFile && it.name.endsWith(".json") }
+                ?.sortedByDescending { it.name }?.drop(5)?.forEach { it.delete() }
+        } catch (_: Exception) { }
+        if (!backupPrefs.getString("folder_uri", null).isNullOrBlank()) saveExternalBackup(showToast = false)
+    }
+
+    private fun restoreLocalBackup() {
+        val files = backupDir.listFiles()?.filter { it.isFile && it.name.endsWith(".json") }?.sortedByDescending { it.name } ?: emptyList()
+        if (files.isEmpty()) {
+            Toast.makeText(this, "暂无本地自动备份；请先导出备份并选择备份目录", Toast.LENGTH_LONG).show()
+            return
+        }
+        val labels = files.map { it.name }.toTypedArray()
+        AlertDialog.Builder(this).setTitle("恢复本地备份")
+            .setItems(labels) { _, which ->
+                AlertDialog.Builder(this).setTitle("确认恢复")
+                    .setMessage("恢复 $" + "{files[which].name} 将替换当前服务列表和倒计时，建议先导出当前数据。")
+                    .setNegativeButton("取消", null)
+                    .setPositiveButton("恢复") { _, _ ->
+                        try {
+                            val emergency = java.io.File(backupDir, timestampName())
+                            emergency.writeText(backupJson(), Charsets.UTF_8)
+                            importDataJson(files[which].readText(Charsets.UTF_8))
+                        } catch (e: Exception) {
+                            Toast.makeText(this, "恢复失败：$" + "{e.message ?: "备份文件无效"}", Toast.LENGTH_LONG).show()
+                        }
+                    }.show()
+            }.show()
     }
 
     private fun importData(uri: Uri) {
         val json = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
             ?: throw IllegalArgumentException("无法读取文件")
+        createSafetyBackup()
+        importDataJson(json)
+    }
+
+    private fun importDataJson(json: String) {
         val root = JSONObject(json)
         val arr = root.optJSONArray("services") ?: throw IllegalArgumentException("不是有效的倒计时备份文件")
         val imported = mutableListOf<Counter>()
         val editor = prefs.edit()
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
-            val id = o.optString("id").ifBlank { "imported_${System.currentTimeMillis()}_$i" }
+            val id = o.optString("id").ifBlank { "imported_$" + "{System.currentTimeMillis()}_$" + "{i}" }
             val c = Counter(id, o.optString("name", "新服务"), o.optInt("days", 0).coerceAtLeast(0),
                 o.optInt("hours", 0).coerceAtLeast(0), o.optString("prefix", ""), o.optBoolean("deadlineMode", false))
             imported.add(c)
@@ -416,15 +528,20 @@ class MainActivity : Activity() {
             if (date.isNotBlank()) editor.putString(id + "_date", date) else editor.remove(id + "_date")
         }
         if (imported.isEmpty()) throw IllegalArgumentException("文件中没有服务")
-        counters.clear(); counters.addAll(imported)
-        val oldKeys = prefs.all.keys.filter { it.endsWith("_end") || it.endsWith("_date") }
-        oldKeys.forEach { editor.remove(it) }
-        // Reapply imported state after removing old service values.
+        val importedIds = imported.map { it.id }.toSet()
+        prefs.all.keys.filter { it.endsWith("_end") || it.endsWith("_date") }
+            .forEach { key ->
+                val id = key.removeSuffix("_end").removeSuffix("_date")
+                if (id !in importedIds) editor.remove(key)
+            }
+        counters.clear()
+        counters.addAll(imported)
         for (i in 0 until arr.length()) {
-            val o = arr.getJSONObject(i); val id = o.optString("id")
+            val o = arr.getJSONObject(i)
+            val id = imported[i].id
             editor.putLong(id + "_end", o.optLong("end", 0L))
             val date = o.optString("date", "")
-            if (date.isNotBlank()) editor.putString(id + "_date", date)
+            if (date.isNotBlank()) editor.putString(id + "_date", date) else editor.remove(id + "_date")
         }
         editor.apply()
         saveCounterDefinitions(); buildCards(); updateAll()
