@@ -412,10 +412,10 @@ class MainActivity : Activity() {
 
     private fun timestampName(): String {
         val base = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())
-        var name = "$" + "{base}.json"
+        var name = "${base}.json"
         var suffix = 1
         while (java.io.File(backupDir, name).exists()) {
-            name = "$" + "{base}_%02d.json".format(suffix)
+            name = "${base}_%02d.json".format(suffix)
             suffix++
         }
         return name
@@ -443,9 +443,9 @@ class MainActivity : Activity() {
             contentResolver.openOutputStream(fileUri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use { it.write(backupJson()) }
                 ?: throw IllegalStateException("无法写入备份文件")
             pruneExternalBackups(tree)
-            if (showToast) Toast.makeText(this, "备份成功：$" + "{name}（仅保留最新5个）", Toast.LENGTH_LONG).show()
+            if (showToast) Toast.makeText(this, "备份成功：${name}（仅保留最新5个）", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
-            if (showToast) Toast.makeText(this, "外部备份失败：$" + "{e.message ?: "请检查备份目录权限"}", Toast.LENGTH_LONG).show()
+            if (showToast) Toast.makeText(this, "外部备份失败：${e.message ?: \"请检查备份目录权限\"}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -491,7 +491,7 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this).setTitle("恢复本地备份")
             .setItems(labels) { _, which ->
                 AlertDialog.Builder(this).setTitle("确认恢复")
-                    .setMessage("恢复 $" + "{files[which].name} 将替换当前服务列表和倒计时，建议先导出当前数据。")
+                    .setMessage("恢复 ${files[which].name} 将替换当前服务列表和倒计时，建议先导出当前数据。")
                     .setNegativeButton("取消", null)
                     .setPositiveButton("恢复") { _, _ ->
                         try {
@@ -499,7 +499,7 @@ class MainActivity : Activity() {
                             emergency.writeText(backupJson(), Charsets.UTF_8)
                             importDataJson(files[which].readText(Charsets.UTF_8))
                         } catch (e: Exception) {
-                            Toast.makeText(this, "恢复失败：$" + "{e.message ?: "备份文件无效"}", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this, "恢复失败：${e.message ?: \"备份文件无效\"}", Toast.LENGTH_LONG).show()
                         }
                     }.show()
             }.show()
@@ -519,7 +519,7 @@ class MainActivity : Activity() {
         val editor = prefs.edit()
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
-            val id = o.optString("id").ifBlank { "imported_$" + "{System.currentTimeMillis()}_$" + "{i}" }
+            val id = o.optString("id").ifBlank { "imported_${System.currentTimeMillis()}_${i}" }
             val c = Counter(id, o.optString("name", "新服务"), o.optInt("days", 0).coerceAtLeast(0),
                 o.optInt("hours", 0).coerceAtLeast(0), o.optString("prefix", ""), o.optBoolean("deadlineMode", false))
             imported.add(c)
