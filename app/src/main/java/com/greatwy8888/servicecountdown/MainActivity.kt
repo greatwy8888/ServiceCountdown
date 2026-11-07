@@ -261,8 +261,19 @@ class MainActivity : Activity() {
                         saveCounterDefinitions(); buildCards(); updateAll()
                     }
                 } else {
+                    val oldDeadlineMode = existing.deadlineMode
                     existing.name = n; existing.days = d; existing.hours = h; existing.deadlineMode = deadline.isChecked
-                    if (!existing.deadlineMode) prefs.edit().remove(existing.id + "_date").apply()
+                    val editPrefs = prefs.edit()
+                    if (!existing.deadlineMode) {
+                        editPrefs.remove(existing.id + "_date")
+                        if (prefs.getLong(existing.id + "_end", 0L) > 0L) {
+                            editPrefs.putLong(existing.id + "_end",
+                                System.currentTimeMillis() + d * 86400000L + h * 3600000L)
+                        }
+                    } else if (!oldDeadlineMode && prefs.getLong(existing.id + "_end", 0L) > 0L) {
+                        editPrefs.putString(existing.id + "_date", formatDate(prefs.getLong(existing.id + "_end", 0L)))
+                    }
+                    editPrefs.apply()
                     saveCounterDefinitions(); buildCards(); updateAll()
                 }
             }.show()
