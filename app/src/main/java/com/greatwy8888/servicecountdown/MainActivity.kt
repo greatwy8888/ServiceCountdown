@@ -151,7 +151,7 @@ class MainActivity : Activity() {
             }
             top.addView(title, LinearLayout.LayoutParams(0, -2, 1f))
             val badge = TextView(this).apply {
-                text = if (c.deadlineMode) "截止日期" else "${c.days}天服务"
+                text = if (c.deadlineMode) "截止日期" else "${c.days + c.extraDays}天服务"
                 textSize = 12f; setTextColor(Color.parseColor("#E87924"))
             }
             top.addView(badge)
@@ -235,7 +235,7 @@ class MainActivity : Activity() {
             panel.addView(e, LinearLayout.LayoutParams(-1, dp(48)))
             return e
         }
-        val name = field("服务器名", existing?.name ?: "")
+        val name = field("服务名称", existing?.name ?: "")
         val days = field("服务时间（天）", existing?.days?.toString() ?: "90", true)
         val extraDays = field("额外天数（可填0）", existing?.extraDays?.toString() ?: "0", true)
         val hours = field("额外小时数（可填0）", existing?.hours?.toString() ?: "0", true)
