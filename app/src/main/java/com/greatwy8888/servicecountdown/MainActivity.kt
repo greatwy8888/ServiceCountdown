@@ -28,7 +28,8 @@ private data class Counter(
     var days: Int,
     var hours: Int = 0,
     var prefix: String = "",
-    var deadlineMode: Boolean = false
+    var deadlineMode: Boolean = false,
+    var extraDays: Int = 0
 )
 
 class MainActivity : Activity() {
@@ -102,7 +103,7 @@ class MainActivity : Activity() {
                 val o = arr.getJSONObject(i)
                 counters.add(Counter(
                     o.optString("id"), o.optString("name"), o.optInt("days"),
-                    o.optInt("hours"), o.optString("prefix"), o.optBoolean("deadlineMode")
+                    o.optInt("hours"), o.optString("prefix"), o.optBoolean("deadlineMode"), o.optInt("extraDays")
                 ))
             }
         } catch (_: Exception) {
@@ -115,7 +116,7 @@ class MainActivity : Activity() {
         val arr = JSONArray()
         counters.forEach { c ->
             arr.put(JSONObject().put("id", c.id).put("name", c.name).put("days", c.days)
-                .put("hours", c.hours).put("prefix", c.prefix).put("deadlineMode", c.deadlineMode))
+                .put("hours", c.hours).put("prefix", c.prefix).put("deadlineMode", c.deadlineMode).put("extraDays", c.extraDays))
         }
         prefs.edit().putString("services_json", arr.toString()).apply()
     }
@@ -235,7 +236,8 @@ class MainActivity : Activity() {
             return e
         }
         val name = field("服务器名", existing?.name ?: "")
-        val days = field("倒计时天数", existing?.days?.toString() ?: "90", true)
+        val days = field("服务时间（天）", existing?.days?.toString() ?: "90", true)
+        val extraDays = field("额外天数（可填0）", existing?.extraDays?.toString() ?: "0", true)
         val hours = field("额外小时数（可填0）", existing?.hours?.toString() ?: "0", true)
         val deadline = CheckBox(this).apply { text = "按截止日期倒计时（如 Dpdns.org）"; isChecked = existing?.deadlineMode ?: false }
         panel.addView(deadline)
@@ -250,15 +252,16 @@ class MainActivity : Activity() {
             .setPositiveButton("保存") { _, _ ->
                 val n = name.text.toString().trim()
                 val d = days.text.toString().toIntOrNull()
+                val ed = extraDays.text.toString().toIntOrNull()
                 val h = hours.text.toString().toIntOrNull()
-                if (n.isEmpty() || d == null || h == null || d < 0 || h < 0 || h > 999) {
-                    Toast.makeText(this, "请填写有效的服务器名、天数和小时数", Toast.LENGTH_LONG).show()
+                if (n.isEmpty() || d == null || ed == null || h == null || d < 0 || ed < 0 || h < 0 || h > 999) {
+                    Toast.makeText(this, "请填写有效的服务名称、服务时间、额外天数和小时数", Toast.LENGTH_LONG).show()
                     return@setPositiveButton
                 }
                 createSafetyBackup()
                 if (existing == null) {
                     val id = "custom_" + System.currentTimeMillis().toString()
-                    val c = Counter(id, n, d, h, "", deadline.isChecked)
+                    val c = Counter(id, n, d, h, "", deadline.isChecked, ed)
                     counters.add(c)
                     if (deadline.isChecked) {
                         chooseDateForNewService(c)
@@ -268,13 +271,13 @@ class MainActivity : Activity() {
                     }
                 } else {
                     val oldDeadlineMode = existing.deadlineMode
-                    existing.name = n; existing.days = d; existing.hours = h; existing.deadlineMode = deadline.isChecked
+                    existing.name = n; existing.days = d; existing.extraDays = ed; existing.hours = h; existing.deadlineMode = deadline.isChecked
                     val editPrefs = prefs.edit()
                     if (!existing.deadlineMode) {
                         editPrefs.remove(existing.id + "_date")
                         if (prefs.getLong(existing.id + "_end", 0L) > 0L) {
                             editPrefs.putLong(existing.id + "_end",
-                                System.currentTimeMillis() + d * 86400000L + h * 3600000L)
+                                System.currentTimeMillis() + (d + ed) * 86400000L + h * 3600000L)
                         }
                     } else if (!oldDeadlineMode && prefs.getLong(existing.id + "_end", 0L) > 0L) {
                         editPrefs.putString(existing.id + "_date", formatDate(prefs.getLong(existing.id + "_end", 0L)))
@@ -332,7 +335,7 @@ class MainActivity : Activity() {
                 return
             }
         } else if (prefs.getLong(key, 0L) <= now) {
-            prefs.edit().putLong(key, now + c.days * 86400000L + c.hours * 3600000L).apply()
+            prefs.edit().putLong(key, now + (c.days + c.extraDays) * 86400000L + c.hours * 3600000L).apply()
         }
         updateAll()
     }
@@ -403,7 +406,7 @@ class MainActivity : Activity() {
         counters.forEach { c ->
             arr.put(JSONObject().put("id", c.id).put("name", c.name).put("days", c.days)
                 .put("hours", c.hours).put("prefix", c.prefix).put("deadlineMode", c.deadlineMode)
-                .put("end", prefs.getLong(c.id + "_end", 0L))
+                .put("extraDays", c.extraDays).put("end", prefs.getLong(c.id + "_end", 0L))
                 .put("date", prefs.getString(c.id + "_date", "") ?: ""))
         }
         root.put("version", 2).put("createdAt", System.currentTimeMillis()).put("services", arr)
@@ -442,32 +445,9 @@ class MainActivity : Activity() {
                 ?: throw IllegalStateException("无法在备份目录创建文件")
             contentResolver.openOutputStream(fileUri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use { it.write(backupJson()) }
                 ?: throw IllegalStateException("无法写入备份文件")
-            pruneExternalBackups(tree)
-            if (showToast) Toast.makeText(this, "备份成功：${name}（仅保留最新5个）", Toast.LENGTH_LONG).show()
+            if (showToast) Toast.makeText(this, "备份成功：${name}", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             if (showToast) Toast.makeText(this, "外部备份失败：" + (e.message ?: "请检查备份目录权限"), Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun pruneExternalBackups(tree: Uri) {
-        val treeId = DocumentsContract.getTreeDocumentId(tree)
-        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, treeId)
-        val rows = mutableListOf<Pair<String, Uri>>()
-        var cursor: Cursor? = null
-        try {
-            cursor = contentResolver.query(children,
-                arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
-                null, null, null)
-            while (cursor?.moveToNext() == true) {
-                val id = cursor.getString(0)
-                val name = cursor.getString(1) ?: continue
-                if (name.matches(Regex("^[0-9]{8}_[0-9]{4}(_[0-9]{2,})?\\.json$"))) {
-                    rows.add(name to DocumentsContract.buildDocumentUriUsingTree(tree, id))
-                }
-            }
-        } finally { cursor?.close() }
-        rows.sortedByDescending { it.first }.drop(5).forEach { (_, uri) ->
-            try { DocumentsContract.deleteDocument(contentResolver, uri) } catch (_: Exception) { }
         }
     }
 
@@ -475,8 +455,6 @@ class MainActivity : Activity() {
         try {
             val file = java.io.File(backupDir, timestampName())
             file.writeText(backupJson(), Charsets.UTF_8)
-            backupDir.listFiles()?.filter { it.isFile && it.name.endsWith(".json") }
-                ?.sortedByDescending { it.name }?.drop(5)?.forEach { it.delete() }
         } catch (_: Exception) { }
         if (!backupPrefs.getString("folder_uri", null).isNullOrBlank()) saveExternalBackup(showToast = false)
     }
@@ -521,7 +499,7 @@ class MainActivity : Activity() {
             val o = arr.getJSONObject(i)
             val id = o.optString("id").ifBlank { "imported_${System.currentTimeMillis()}_${i}" }
             val c = Counter(id, o.optString("name", "新服务"), o.optInt("days", 0).coerceAtLeast(0),
-                o.optInt("hours", 0).coerceAtLeast(0), o.optString("prefix", ""), o.optBoolean("deadlineMode", false))
+                o.optInt("hours", 0).coerceAtLeast(0), o.optString("prefix", ""), o.optBoolean("deadlineMode", false), o.optInt("extraDays", 0).coerceAtLeast(0))
             imported.add(c)
             editor.putLong(id + "_end", o.optLong("end", 0L))
             val date = o.optString("date", "")
