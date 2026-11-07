@@ -445,7 +445,7 @@ class MainActivity : Activity() {
             pruneExternalBackups(tree)
             if (showToast) Toast.makeText(this, "备份成功：${name}（仅保留最新5个）", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
-            if (showToast) Toast.makeText(this, "外部备份失败：${e.message ?: "请检查备份目录权限"}", Toast.LENGTH_LONG).show()
+            if (showToast) Toast.makeText(this, "外部备份失败：" + (e.message ?: "请检查备份目录权限"), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -499,7 +499,7 @@ class MainActivity : Activity() {
                             emergency.writeText(backupJson(), Charsets.UTF_8)
                             importDataJson(files[which].readText(Charsets.UTF_8))
                         } catch (e: Exception) {
-                            Toast.makeText(this, "恢复失败：${e.message ?: "备份文件无效"}", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this, "恢复失败：" + (e.message ?: "备份文件无效"), Toast.LENGTH_LONG).show()
                         }
                     }.show()
             }.show()
