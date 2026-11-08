@@ -304,8 +304,11 @@ class MainActivity : Activity() {
                     val editPrefs = prefs.edit()
                     if (!existing.deadlineMode) {
                         editPrefs.remove(existing.id + "_date")
-                        // Do not alter the running end time while saving edits. Pressing "开始" applies
-                        // the edited countdown duration, while the fixed service time remains separate.
+                        // Editing the service/countdown duration immediately updates an active countdown.
+                        if (prefs.getLong(existing.id + "_end", 0L) > 0L) {
+                            editPrefs.putLong(existing.id + "_end",
+                                System.currentTimeMillis() + ed * 86400000L + h * 3600000L)
+                        }
                     } else if (!oldDeadlineMode && prefs.getLong(existing.id + "_end", 0L) > 0L) {
                         editPrefs.putString(existing.id + "_date", formatDate(prefs.getLong(existing.id + "_end", 0L)))
                     }
@@ -360,9 +363,8 @@ class MainActivity : Activity() {
                 return
             }
         } else {
-            // Starting always begins a fresh countdown from the editable duration, never adds it to service time.
-            val durationDays = if (c.extraDays > 0 || c.hours > 0) c.extraDays else c.days
-            prefs.edit().putLong(key, now + durationDays * 86400000L + c.hours * 3600000L).apply()
+            // Start from the configured duration; Reset restores this to the service time.
+            prefs.edit().putLong(key, now + c.extraDays.coerceAtLeast(0) * 86400000L + c.hours.coerceAtLeast(0) * 3600000L).apply()
         }
         updateAll()
     }
@@ -372,7 +374,11 @@ class MainActivity : Activity() {
             val field = cards[c.id]?.date
             if (field != null) showDatePicker(c, field) else chooseDateForNewService(c)
         } else {
+            // Reset clears the display and restores the next Start to the original service duration.
+            c.extraDays = c.days
+            c.hours = 0
             prefs.edit().remove(c.id + "_end").apply()
+            saveCounterDefinitions()
             updateAll()
         }
     }
@@ -385,14 +391,11 @@ class MainActivity : Activity() {
             if (end <= 0L) {
                 set(v, 0); v.status.text = "未开始"
             } else {
-                val d = end - now
-                if (d <= 0L) {
-                    set(v, 0); v.status.text = "倒计时已结束！"
-                } else {
-                    val sec = d / 1000L
-                    set(v, sec / 86400L, (sec % 86400L) / 3600L, (sec % 3600L) / 60L, sec % 60L)
-                    v.status.text = "正在倒计时"
-                }
+                val sec = Math.floorDiv(end - now, 1000L)
+                val days = Math.floorDiv(sec, 86400L)
+                val remainder = Math.floorMod(sec, 86400L)
+                set(v, days, remainder / 3600L, (remainder % 3600L) / 60L, remainder % 60L)
+                v.status.text = if (sec < 0L) "已超时" else "正在倒计时"
             }
         }
     }
