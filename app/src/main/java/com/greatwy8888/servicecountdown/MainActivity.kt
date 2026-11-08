@@ -397,11 +397,20 @@ class MainActivity : Activity() {
             if (end <= 0L) {
                 set(v, 0); v.status.text = "未开始"
             } else {
-                val sec = Math.floorDiv(end - now, 1000L)
-                val days = Math.floorDiv(sec, 86400L)
-                val remainder = Math.floorMod(sec, 86400L)
-                set(v, days, remainder / 3600L, (remainder % 3600L) / 60L, remainder % 60L)
-                v.status.text = if (sec < 0L) "已超时" else "正在倒计时"
+                val remainingSeconds = Math.floorDiv(end - now, 1000L)
+                if (remainingSeconds >= 0L) {
+                    val days = remainingSeconds / 86400L
+                    val remainder = remainingSeconds % 86400L
+                    set(v, days, remainder / 3600L, (remainder % 3600L) / 60L, remainder % 60L)
+                    v.status.text = "正在倒计时"
+                } else {
+                    // Once the deadline passes, switch to positive elapsed-time counting.
+                    val elapsedSeconds = Math.floorDiv(now - end, 1000L)
+                    val days = elapsedSeconds / 86400L
+                    val remainder = elapsedSeconds % 86400L
+                    set(v, days, remainder / 3600L, (remainder % 3600L) / 60L, remainder % 60L)
+                    v.status.text = "已超时 · 正计时"
+                }
             }
         }
     }
