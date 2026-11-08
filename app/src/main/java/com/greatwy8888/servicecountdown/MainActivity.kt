@@ -229,16 +229,30 @@ class MainActivity : Activity() {
 
     private fun showServiceEditor(existing: Counter?) {
         val panel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
-        fun field(hintText: String, value: String = "", numeric: Boolean = false): EditText {
-            val e = EditText(this).apply { hint = hintText; setText(value); textSize = 16f; setSingleLine(true) }
+        fun field(labelText: String, value: String = "", numeric: Boolean = false): EditText {
+            // Keep the field label visible even after the user enters a value.
+            val label = TextView(this).apply {
+                text = labelText
+                textSize = 14f
+                setTextColor(Color.parseColor("#4A2B20"))
+                setTypeface(typeface, 1)
+                setPadding(0, dp(5), 0, 0)
+            }
+            panel.addView(label, LinearLayout.LayoutParams(-1, dp(24)))
+            val e = EditText(this).apply {
+                hint = "请输入"
+                setText(value)
+                textSize = 16f
+                setSingleLine(true)
+            }
             if (numeric) e.inputType = 2
-            panel.addView(e, LinearLayout.LayoutParams(-1, dp(48)))
+            panel.addView(e, LinearLayout.LayoutParams(-1, dp(44)))
             return e
         }
         val name = field("服务名称", existing?.name ?: "")
         val days = field("服务时间（天）", existing?.days?.toString() ?: "90", true)
-        val extraDays = field("额外天数（可填0）", existing?.extraDays?.toString() ?: "0", true)
-        val hours = field("额外小时数（可填0）", existing?.hours?.toString() ?: "0", true)
+        val extraDays = field("天数", existing?.extraDays?.toString() ?: "0", true)
+        val hours = field("小时", existing?.hours?.toString() ?: "0", true)
         val deadline = CheckBox(this).apply { text = "按截止日期倒计时（如 Dpdns.org）"; isChecked = existing?.deadlineMode ?: false }
         panel.addView(deadline)
         val help = TextView(this).apply {
@@ -255,7 +269,7 @@ class MainActivity : Activity() {
                 val ed = extraDays.text.toString().toIntOrNull()
                 val h = hours.text.toString().toIntOrNull()
                 if (n.isEmpty() || d == null || ed == null || h == null || d < 0 || ed < 0 || h < 0 || h > 999) {
-                    Toast.makeText(this, "请填写有效的服务名称、服务时间、额外天数和小时数", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "请填写有效的服务名称、服务时间、天数和小时数", Toast.LENGTH_LONG).show()
                     return@setPositiveButton
                 }
                 createSafetyBackup()
