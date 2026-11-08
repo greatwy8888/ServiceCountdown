@@ -251,8 +251,20 @@ class MainActivity : Activity() {
         }
         val name = field("服务名称", existing?.name ?: "")
         val days = field("服务时间（天）", existing?.days?.toString() ?: "90", true)
-        val extraDays = field("天数", existing?.extraDays?.toString() ?: "0", true)
-        val hours = field("小时", existing?.hours?.toString() ?: "0", true)
+        val currentEnd = existing?.let { prefs.getLong(it.id + "_end", 0L) } ?: 0L
+        val remainingMs = currentEnd - System.currentTimeMillis()
+        val shownDays = if (existing != null && remainingMs > 0L) (remainingMs / 86400000L).toInt() else (existing?.extraDays?.takeIf { it > 0 } ?: existing?.days ?: 0)
+        val shownHours = if (existing != null && remainingMs > 0L) ((remainingMs % 86400000L) / 3600000L).toInt() else (existing?.hours ?: 0)
+        val extraDays = field("天数", shownDays.toString(), true)
+        val hours = field("小时", shownHours.toString(), true)
+        if (existing == null) {
+            listOf(extraDays, hours).forEach { e ->
+                e.isEnabled = false
+                e.setTextColor(Color.GRAY)
+                e.setHintTextColor(Color.LTGRAY)
+                e.setBackgroundColor(Color.parseColor("#F0F0F0"))
+            }
+        }
         val deadline = CheckBox(this).apply { text = "按截止日期倒计时（如 Dpdns.org）"; isChecked = existing?.deadlineMode ?: false }
         panel.addView(deadline)
         val help = TextView(this).apply {
@@ -275,7 +287,8 @@ class MainActivity : Activity() {
                 createSafetyBackup()
                 if (existing == null) {
                     val id = "custom_" + System.currentTimeMillis().toString()
-                    val c = Counter(id, n, d, h, "", deadline.isChecked, ed)
+                    // On creation, countdown duration starts from the fixed service time; duration fields are read-only.
+                    val c = Counter(id, n, d, 0, "", deadline.isChecked, d)
                     counters.add(c)
                     if (deadline.isChecked) {
                         chooseDateForNewService(c)
@@ -285,14 +298,16 @@ class MainActivity : Activity() {
                     }
                 } else {
                     val oldDeadlineMode = existing.deadlineMode
-                    existing.name = n; existing.days = d; existing.extraDays = ed; existing.hours = h; existing.deadlineMode = deadline.isChecked
+                    existing.name = n
+                    existing.days = d
+                    existing.extraDays = ed
+                    existing.hours = h
+                    existing.deadlineMode = deadline.isChecked
                     val editPrefs = prefs.edit()
                     if (!existing.deadlineMode) {
                         editPrefs.remove(existing.id + "_date")
-                        if (prefs.getLong(existing.id + "_end", 0L) > 0L) {
-                            editPrefs.putLong(existing.id + "_end",
-                                System.currentTimeMillis() + d * 86400000L + h * 3600000L)
-                        }
+                        // Do not alter the running end time while saving edits. Pressing "开始" applies
+                        // the edited countdown duration, while the fixed service time remains separate.
                     } else if (!oldDeadlineMode && prefs.getLong(existing.id + "_end", 0L) > 0L) {
                         editPrefs.putString(existing.id + "_date", formatDate(prefs.getLong(existing.id + "_end", 0L)))
                     }
@@ -348,8 +363,10 @@ class MainActivity : Activity() {
                 if (field != null) showDatePicker(c, field) else chooseDateForNewService(c)
                 return
             }
-        } else if (prefs.getLong(key, 0L) <= now) {
-            prefs.edit().putLong(key, now + c.days * 86400000L + c.hours * 3600000L).apply()
+        } else {
+            // Starting always begins a fresh countdown from the editable duration, never adds it to service time.
+            val durationDays = if (c.extraDays > 0 || c.hours > 0) c.extraDays else c.days
+            prefs.edit().putLong(key, now + durationDays * 86400000L + c.hours * 3600000L).apply()
         }
         updateAll()
     }
