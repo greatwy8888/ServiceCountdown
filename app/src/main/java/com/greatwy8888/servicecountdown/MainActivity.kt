@@ -27,6 +27,7 @@ private data class Counter(
     var name: String,
     var days: Int,
     var hours: Int = 0,
+    var minutes: Int = 0,
     var prefix: String = "",
     var deadlineMode: Boolean = false,
     var extraDays: Int = 0
@@ -62,15 +63,15 @@ class MainActivity : Activity() {
 
     private fun defaultCounters() = listOf(
         Counter("webhostmost", "WebHostMost", 45),
-        Counter("greatyi", "Greatyi", 90, 0, "Serv00-"),
-        Counter("greatwang", "Greatwang", 90, 0, "Serv00-"),
-        Counter("greatwang10", "Greatwang10", 90, 0, "Serv00-"),
-        Counter("kingqi", "Kingqi", 90, 0, "Serv00-"),
-        Counter("greatqi", "Greatqi", 90, 0, "Serv00-"),
-        Counter("linying8781", "linying8781", 90, 0, "Serv00-"),
-        Counter("y1382122", "y1382122", 90, 0, "Serv00-"),
-        Counter("tied", "tied", 90, 0, "Serv00-"),
-        Counter("dpdns", "Dpdns.org", 0, 0, "", true)
+        Counter("greatyi", "Greatyi", 90, 0, 0, "Serv00-"),
+        Counter("greatwang", "Greatwang", 90, 0, 0, "Serv00-"),
+        Counter("greatwang10", "Greatwang10", 90, 0, 0, "Serv00-"),
+        Counter("kingqi", "Kingqi", 90, 0, 0, "Serv00-"),
+        Counter("greatqi", "Greatqi", 90, 0, 0, "Serv00-"),
+        Counter("linying8781", "linying8781", 90, 0, 0, "Serv00-"),
+        Counter("y1382122", "y1382122", 90, 0, 0, "Serv00-"),
+        Counter("tied", "tied", 90, 0, 0, "Serv00-"),
+        Counter("dpdns", "Dpdns.org", 0, 0, 0, "", true)
     )
 
     private fun initializeFromWebsiteData() {
@@ -102,7 +103,7 @@ class MainActivity : Activity() {
                 val o = arr.getJSONObject(i)
                 counters.add(Counter(
                     o.optString("id"), o.optString("name"), o.optInt("days"),
-                    o.optInt("hours"), o.optString("prefix"), o.optBoolean("deadlineMode"), o.optInt("extraDays")
+                    o.optInt("hours"), o.optInt("minutes"), o.optString("prefix"), o.optBoolean("deadlineMode"), o.optInt("extraDays")
                 ))
             }
         } catch (_: Exception) {
@@ -115,7 +116,7 @@ class MainActivity : Activity() {
         val arr = JSONArray()
         counters.forEach { c ->
             arr.put(JSONObject().put("id", c.id).put("name", c.name).put("days", c.days)
-                .put("hours", c.hours).put("prefix", c.prefix).put("deadlineMode", c.deadlineMode).put("extraDays", c.extraDays))
+                .put("hours", c.hours).put("minutes", c.minutes).put("prefix", c.prefix).put("deadlineMode", c.deadlineMode).put("extraDays", c.extraDays))
         }
         prefs.edit().putString("services_json", arr.toString()).apply()
     }
@@ -256,8 +257,10 @@ class MainActivity : Activity() {
         val shownHours = if (existing != null && remainingMs > 0L) ((remainingMs % 86400000L) / 3600000L).toInt() else (existing?.hours ?: 0)
         val extraDays = field("天数", shownDays.toString(), true)
         val hours = field("小时", shownHours.toString(), true)
+        val shownMinutes = if (existing != null && remainingMs > 0L) ((remainingMs % 3600000L) / 60000L).toInt() else (existing?.minutes ?: 0)
+        val minutes = field("分钟", shownMinutes.toString(), true)
         if (existing == null) {
-            listOf(extraDays, hours).forEach { e ->
+            listOf(extraDays, hours, minutes).forEach { e ->
                 e.isEnabled = false
                 e.setTextColor(Color.GRAY)
                 e.setHintTextColor(Color.LTGRAY)
@@ -279,14 +282,15 @@ class MainActivity : Activity() {
                 val d = days.text.toString().toIntOrNull()
                 val ed = extraDays.text.toString().toIntOrNull()
                 val h = hours.text.toString().toIntOrNull()
-                if (n.isEmpty() || d == null || ed == null || h == null || d < 0 || ed < 0 || h < 0 || h > 999) {
-                    Toast.makeText(this, "请填写有效的服务名称、服务时间、天数和小时数", Toast.LENGTH_LONG).show()
+                val m = minutes.text.toString().toIntOrNull()
+                if (n.isEmpty() || d == null || ed == null || h == null || m == null || d < 0 || ed < 0 || h < 0 || h > 999 || m < 0 || m > 59) {
+                    Toast.makeText(this, "请填写有效的服务名称、服务时间、天数、小时和分钟（分钟0-59）", Toast.LENGTH_LONG).show()
                     return@setPositiveButton
                 }
                 if (existing == null) {
                     val id = "custom_" + System.currentTimeMillis().toString()
                     // On creation, countdown duration starts from the fixed service time; duration fields are read-only.
-                    val c = Counter(id, n, d, 0, "", deadline.isChecked, d)
+                    val c = Counter(id, n, d, 0, 0, "", deadline.isChecked, d)
                     counters.add(c)
                     if (deadline.isChecked) {
                         chooseDateForNewService(c)
@@ -300,6 +304,7 @@ class MainActivity : Activity() {
                     existing.days = d
                     existing.extraDays = ed
                     existing.hours = h
+                    existing.minutes = m
                     existing.deadlineMode = deadline.isChecked
                     val editPrefs = prefs.edit()
                     if (!existing.deadlineMode) {
@@ -307,7 +312,7 @@ class MainActivity : Activity() {
                         // Editing the service/countdown duration immediately updates an active countdown.
                         if (prefs.getLong(existing.id + "_end", 0L) > 0L) {
                             editPrefs.putLong(existing.id + "_end",
-                                System.currentTimeMillis() + ed * 86400000L + h * 3600000L)
+                                System.currentTimeMillis() + ed * 86400000L + h * 3600000L + m * 60000L)
                         }
                     } else if (!oldDeadlineMode && prefs.getLong(existing.id + "_end", 0L) > 0L) {
                         editPrefs.putString(existing.id + "_date", formatDate(prefs.getLong(existing.id + "_end", 0L)))
@@ -364,7 +369,7 @@ class MainActivity : Activity() {
             }
         } else {
             // Start from the configured duration; Reset restores this to the service time.
-            prefs.edit().putLong(key, now + c.extraDays.coerceAtLeast(0) * 86400000L + c.hours.coerceAtLeast(0) * 3600000L).apply()
+            prefs.edit().putLong(key, now + c.extraDays.coerceAtLeast(0) * 86400000L + c.hours.coerceAtLeast(0) * 3600000L + c.minutes.coerceIn(0, 59) * 60000L).apply()
         }
         updateAll()
     }
@@ -377,6 +382,7 @@ class MainActivity : Activity() {
             // Reset clears the display and restores the next Start to the original service duration.
             c.extraDays = c.days
             c.hours = 0
+            c.minutes = 0
             prefs.edit().remove(c.id + "_end").apply()
             saveCounterDefinitions()
             updateAll()
@@ -491,7 +497,7 @@ class MainActivity : Activity() {
             val o = arr.getJSONObject(i)
             val id = o.optString("id").ifBlank { "imported_${System.currentTimeMillis()}_${i}" }
             val c = Counter(id, o.optString("name", "新服务"), o.optInt("days", 0).coerceAtLeast(0),
-                o.optInt("hours", 0).coerceAtLeast(0), o.optString("prefix", ""), o.optBoolean("deadlineMode", false), o.optInt("extraDays", 0).coerceAtLeast(0))
+                o.optInt("hours", 0).coerceAtLeast(0), o.optInt("minutes", 0).coerceIn(0, 59), o.optString("prefix", ""), o.optBoolean("deadlineMode", false), o.optInt("extraDays", 0).coerceAtLeast(0))
             imported.add(c)
             editor.putLong(id + "_end", o.optLong("end", 0L))
             val date = o.optString("date", "")
