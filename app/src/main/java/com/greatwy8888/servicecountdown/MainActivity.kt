@@ -40,7 +40,6 @@ class MainActivity : Activity() {
     private var pendingDateField: EditText? = null
     private var pendingDateDialog: AlertDialog? = null
     private val backupPrefs by lazy { getSharedPreferences("countdown_backup", MODE_PRIVATE) }
-    private val backupDir by lazy { java.io.File(filesDir, "backups").apply { if (!exists()) mkdirs() } }
 
     data class CardViews(
         val days: TextView, val hours: TextView, val mins: TextView,
@@ -216,13 +215,13 @@ class MainActivity : Activity() {
     }
 
     private fun showSettings() {
-        val options = arrayOf("添加服务", "导入", "导出备份", "恢复本地备份")
+        val options = arrayOf("添加服务", "导入", "手动备份", "选择备份文件夹")
         AlertDialog.Builder(this).setTitle("设置").setItems(options) { _, which ->
             when (which) {
                 0 -> showServiceEditor(null)
                 1 -> { val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { type = "application/json"; addCategory(Intent.CATEGORY_OPENABLE) }; startActivityForResult(i, 2001) }
                 2 -> exportBackup()
-                3 -> restoreLocalBackup()
+                3 -> chooseBackupFolder()
             }
         }.show()
     }
@@ -284,7 +283,6 @@ class MainActivity : Activity() {
                     Toast.makeText(this, "请填写有效的服务名称、服务时间、天数和小时数", Toast.LENGTH_LONG).show()
                     return@setPositiveButton
                 }
-                createSafetyBackup()
                 if (existing == null) {
                     val id = "custom_" + System.currentTimeMillis().toString()
                     // On creation, countdown duration starts from the fixed service time; duration fields are read-only.
@@ -345,7 +343,6 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this).setTitle("删除倒计时")
             .setMessage("确定删除“${c.name}”及其倒计时吗？")
             .setNegativeButton("取消", null).setPositiveButton("删除") { _, _ ->
-                createSafetyBackup()
                 counters.removeAll { it.id == c.id }
                 prefs.edit().remove(c.id + "_end").remove(c.id + "_date").apply()
                 saveCounterDefinitions(); buildCards(); updateAll()
@@ -353,7 +350,6 @@ class MainActivity : Activity() {
     }
 
     private fun start(c: Counter) {
-        createSafetyBackup()
         val now = System.currentTimeMillis()
         val key = c.id + "_end"
         if (c.deadlineMode) {
@@ -372,7 +368,6 @@ class MainActivity : Activity() {
     }
 
     private fun reset(c: Counter) {
-        createSafetyBackup()
         if (c.deadlineMode) {
             val field = cards[c.id]?.date
             if (field != null) showDatePicker(c, field) else chooseDateForNewService(c)
@@ -444,26 +439,22 @@ class MainActivity : Activity() {
         return root.toString(2)
     }
 
-    private fun timestampName(): String {
-        val base = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())
-        var name = "${base}.json"
-        var suffix = 1
-        while (java.io.File(backupDir, name).exists()) {
-            name = "${base}_%02d.json".format(suffix)
-            suffix++
-        }
-        return name
-    }
+    private fun timestampName(): String = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date()) + ".json"
 
     private fun exportBackup() {
         val folder = backupPrefs.getString("folder_uri", null)
         if (folder.isNullOrBlank()) {
-            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
-            startActivityForResult(intent, 2003)
+            chooseBackupFolder()
         } else {
             saveExternalBackup(showToast = true)
         }
+    }
+
+    private fun chooseBackupFolder() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        startActivityForResult(intent, 2003)
     }
 
     private fun saveExternalBackup(showToast: Boolean = false) {
@@ -482,42 +473,9 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun createSafetyBackup() {
-        try {
-            val file = java.io.File(backupDir, timestampName())
-            file.writeText(backupJson(), Charsets.UTF_8)
-        } catch (_: Exception) { }
-        if (!backupPrefs.getString("folder_uri", null).isNullOrBlank()) saveExternalBackup(showToast = false)
-    }
-
-    private fun restoreLocalBackup() {
-        val files = backupDir.listFiles()?.filter { it.isFile && it.name.endsWith(".json") }?.sortedByDescending { it.name } ?: emptyList()
-        if (files.isEmpty()) {
-            Toast.makeText(this, "暂无本地自动备份；请先导出备份并选择备份目录", Toast.LENGTH_LONG).show()
-            return
-        }
-        val labels = files.map { it.name }.toTypedArray()
-        AlertDialog.Builder(this).setTitle("恢复本地备份")
-            .setItems(labels) { _, which ->
-                AlertDialog.Builder(this).setTitle("确认恢复")
-                    .setMessage("恢复 ${files[which].name} 将替换当前服务列表和倒计时，建议先导出当前数据。")
-                    .setNegativeButton("取消", null)
-                    .setPositiveButton("恢复") { _, _ ->
-                        try {
-                            val emergency = java.io.File(backupDir, timestampName())
-                            emergency.writeText(backupJson(), Charsets.UTF_8)
-                            importDataJson(files[which].readText(Charsets.UTF_8))
-                        } catch (e: Exception) {
-                            Toast.makeText(this, "恢复失败：" + (e.message ?: "备份文件无效"), Toast.LENGTH_LONG).show()
-                        }
-                    }.show()
-            }.show()
-    }
-
     private fun importData(uri: Uri) {
         val json = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
             ?: throw IllegalArgumentException("无法读取文件")
-        createSafetyBackup()
         importDataJson(json)
     }
 
