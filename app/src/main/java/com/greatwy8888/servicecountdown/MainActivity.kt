@@ -449,7 +449,7 @@ class MainActivity : Activity() {
         val arr = JSONArray()
         counters.forEach { c ->
             arr.put(JSONObject().put("id", c.id).put("name", c.name).put("days", c.days)
-                .put("hours", c.hours).put("prefix", c.prefix).put("deadlineMode", c.deadlineMode)
+                .put("hours", c.hours).put("minutes", c.minutes).put("prefix", c.prefix).put("deadlineMode", c.deadlineMode)
                 .put("extraDays", c.extraDays).put("end", prefs.getLong(c.id + "_end", 0L))
                 .put("date", prefs.getString(c.id + "_date", "") ?: ""))
         }
@@ -485,16 +485,35 @@ class MainActivity : Activity() {
                 ?: throw IllegalStateException("无法在备份目录创建文件")
             contentResolver.openOutputStream(fileUri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use { it.write(backupJson()) }
                 ?: throw IllegalStateException("无法写入备份文件")
-            if (showToast) Toast.makeText(this, "备份成功：${name}", Toast.LENGTH_LONG).show()
+            // Read the created file back and validate it before reporting success.
+            val verifyText = contentResolver.openInputStream(fileUri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                ?: throw IllegalStateException("文件已创建，但无法重新读取验证")
+            val verifyRoot = JSONObject(verifyText)
+            val verifyServices = verifyRoot.optJSONArray("services")
+                ?: throw IllegalStateException("备份校验失败：缺少 services 数据")
+            if (verifyServices.length() != counters.size) throw IllegalStateException("备份校验失败：服务数量不一致")
+            if (showToast) AlertDialog.Builder(this)
+                .setTitle("备份成功")
+                .setMessage("备份文件已保存并校验成功。\\n文件名：$name\\n服务数量：${verifyServices.length()} 项\\n已保存原始结束时间，可用于恢复倒计时。")
+                .setPositiveButton("确定", null).show()
         } catch (e: Exception) {
-            if (showToast) Toast.makeText(this, "外部备份失败：" + (e.message ?: "请检查备份目录权限"), Toast.LENGTH_LONG).show()
+            if (showToast) AlertDialog.Builder(this)
+                .setTitle("备份失败")
+                .setMessage(e.message ?: "无法写入备份文件，请重新选择备份文件夹并检查权限。")
+                .setPositiveButton("确定", null).show()
         }
     }
 
     private fun importData(uri: Uri) {
-        val json = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-            ?: throw IllegalArgumentException("无法读取文件")
-        importDataJson(json)
+        try {
+            val json = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                ?: throw IllegalArgumentException("无法读取所选文件")
+            importDataJson(json)
+        } catch (e: Exception) {
+            AlertDialog.Builder(this).setTitle("导入失败")
+                .setMessage(e.message ?: "文件读取失败或不是有效的倒计时备份文件。")
+                .setPositiveButton("确定", null).show()
+        }
     }
 
     private fun importDataJson(json: String) {
@@ -530,7 +549,10 @@ class MainActivity : Activity() {
         }
         editor.apply()
         saveCounterDefinitions(); buildCards(); updateAll()
-        Toast.makeText(this, "导入成功，已按文件中的倒计时工作", Toast.LENGTH_LONG).show()
+        val activeCount = imported.count { prefs.getLong(it.id + "_end", 0L) > 0L }
+        AlertDialog.Builder(this).setTitle("导入成功")
+            .setMessage("已从备份恢复 ${imported.size} 项服务，其中 ${activeCount} 项有保存的结束时间。\\n倒计时已按备份中的原始结束时间和当前时间重新计算，请检查列表中的服务名称及剩余时间。")
+            .setPositiveButton("确定", null).show()
     }
 
     private fun dp(x: Int) = (x * resources.displayMetrics.density).toInt()
