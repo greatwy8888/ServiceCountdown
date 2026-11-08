@@ -151,7 +151,7 @@ class MainActivity : Activity() {
             }
             top.addView(title, LinearLayout.LayoutParams(0, -2, 1f))
             val badge = TextView(this).apply {
-                text = if (c.deadlineMode) "截止日期" else "${c.days + c.extraDays}天服务"
+                text = if (c.deadlineMode) "截止日期" else "${c.days}天服务"
                 textSize = 12f; setTextColor(Color.parseColor("#E87924"))
             }
             top.addView(badge)
@@ -291,7 +291,7 @@ class MainActivity : Activity() {
                         editPrefs.remove(existing.id + "_date")
                         if (prefs.getLong(existing.id + "_end", 0L) > 0L) {
                             editPrefs.putLong(existing.id + "_end",
-                                System.currentTimeMillis() + (d + ed) * 86400000L + h * 3600000L)
+                                System.currentTimeMillis() + d * 86400000L + h * 3600000L)
                         }
                     } else if (!oldDeadlineMode && prefs.getLong(existing.id + "_end", 0L) > 0L) {
                         editPrefs.putString(existing.id + "_date", formatDate(prefs.getLong(existing.id + "_end", 0L)))
@@ -349,7 +349,7 @@ class MainActivity : Activity() {
                 return
             }
         } else if (prefs.getLong(key, 0L) <= now) {
-            prefs.edit().putLong(key, now + (c.days + c.extraDays) * 86400000L + c.hours * 3600000L).apply()
+            prefs.edit().putLong(key, now + c.days * 86400000L + c.hours * 3600000L).apply()
         }
         updateAll()
     }
